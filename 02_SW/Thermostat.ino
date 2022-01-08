@@ -2,14 +2,14 @@
 
 
 #define DHTPIN 12        // what pin we're connected to
-#define DHTTYPE DHT22   // DHT 22 
-#define RelayPin 0       // DEFINE RELAY PIN ! 
+#define DHTTYPE DHT22    // DHT 22 
+#define RelayPin 5       // RELAY PIN 
 
 #include "thingProperties.h"
 #include <DHT.h>;
 DHT dht = DHT (DHTPIN, DHTTYPE); //// Initialize DHT sensor
 
-float currentTemp;    // Stores current temperature value
+float currentTemp;        // Stores current temperature value
 float settedTemp = 0;     // Stores the temperature that needs to rich
 boolean heatingStatus = false;
 boolean seasonStatus = false;
@@ -27,7 +27,7 @@ void setup() {
   // Connect to Arduino IoT Cloud
   ArduinoCloud.begin(ArduinoIoTPreferredConnection);
   
-     //Create aditional Tasks for Core 0
+    //Create aditional Tasks for Core 0
     xTaskCreatePinnedToCore(
         TaskWeb,     /* Task function.                            */
         "TaskWeb",   /* name of task.                             */
@@ -57,8 +57,6 @@ void setup() {
         NULL,              /* Task handle to keep track of created task */
         0                  /* Core                                      */
     );
-//  setDebugMessageLevel(2);
-//  ArduinoCloud.printDebugInfo();
 }
 
 void loop() {
@@ -71,11 +69,10 @@ void TaskWeb(void *pvParameters)  // First Task
   (void) pvParameters;
   for (;;) // A Task shall never return or exit.
   {
-    vTaskDelay(10);
     isActive = heatingStatus;
     currentTemperature = currentTemp;
     ArduinoCloud.update();
-    
+    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
   }
 }
 
@@ -84,9 +81,9 @@ void TaskReadTemp(void *pvParameters)  // Second Task
   (void) pvParameters;
   for (;;) // A Task shall never return or exit.
   {
-    vTaskDelay(10);
-    Serial.println("READING TEMPERATURE SENSOR VALUE");
+    //Serial.println("READING TEMPERATURE SENSOR VALUE");
     getTemp();
+    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
   }
 }
 
@@ -95,10 +92,10 @@ void getTemp()
 {
    float readedTemp = dht.readTemperature();
     // Check if any reads failed and exit early (to try again):
-    if ( isnan(readedTemp)) {
+    if (isnan(readedTemp)) 
+    {
       return;
-     // currentTemp = 10;
-    } 
+    }  
     currentTemp = readedTemp;
     //Print temperature value to serial monitor
     Serial.print("Temp: ");
@@ -113,22 +110,24 @@ void TaskHeatControl(void *pvParameters)  // Third Task
   (void) pvParameters;
   for (;;) // A Task shall never return or exit.
   {
-    vTaskDelay(1000);
     Serial.println("Check if HEATING is needed");
     if((currentTemperature < settedTemp) && seasonStatus)  // If current temperature is lower then the temperature setted
+    {
        startHeating();             // turn on heating
+    }
+    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
   }
 }
 
 void startHeating(){
   while((currentTemperature < settedTemp) && seasonStatus)
   {
-    //digitalWrite(RelayPin,HIGH);
+    digitalWrite(RelayPin,HIGH);
     Serial.println("HEATING ON");
     heatingStatus = true;
-    vTaskDelay(1000);
+    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
   }
-  //digitalWrite(RelayPin,LOW);
+  digitalWrite(RelayPin,LOW);
   heatingStatus = false;
   Serial.println("HEATING OFF");
 }

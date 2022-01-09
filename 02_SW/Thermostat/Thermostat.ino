@@ -9,20 +9,23 @@
 #include <DHT.h>;
 DHT dht = DHT (DHTPIN, DHTTYPE); //// Initialize DHT sensor
 
-float currentTemp;        // Stores current temperature value
-float settedTemp = 0;     // Stores the temperature that needs to rich
-boolean heatingStatus = false;
+float settedTemp = 0;          // Stores the temperature that needs to be reached
 boolean seasonStatus = false;
+xSemaphoreHandle xSemaphore;  // Declare the semaphore
+void TaskWeb( void *pvParameters );
+void TaskReadTemp( void *pvParameters );
+void TaskHeatControl( void *pvParameters );
 
 void setup() {
   // Initialize serial and wait for port to open:
   Serial.begin(115200);
   pinMode(RelayPin,OUTPUT);
-  // This delay gives the chance to wait for a Serial Monitor without blocking if none is found
-  vTaskDelay(1500); 
   dht.begin();
   // Defined in thingProperties.h
   initProperties();
+  
+   xSemaphore = xSemaphoreCreateBinary();
+
 
   // Connect to Arduino IoT Cloud
   ArduinoCloud.begin(ArduinoIoTPreferredConnection);
@@ -57,6 +60,7 @@ void setup() {
         NULL,              /* Task handle to keep track of created task */
         0                  /* Core                                      */
     );
+    xSemaphoreGive(xSemaphore);
 }
 
 void loop() {
@@ -69,10 +73,11 @@ void TaskWeb(void *pvParameters)  // First Task
   (void) pvParameters;
   for (;;) // A Task shall never return or exit.
   {
-    isActive = heatingStatus;
-    currentTemperature = currentTemp;
+    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+    Serial.println("Start WEB service");
     ArduinoCloud.update();
-    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
+    xSemaphoreGive(xSemaphore);
+    vTaskDelay(100 / portTICK_PERIOD_MS ); //delay of 100ms
   }
 }
 
@@ -81,9 +86,8 @@ void TaskReadTemp(void *pvParameters)  // Second Task
   (void) pvParameters;
   for (;;) // A Task shall never return or exit.
   {
-    //Serial.println("READING TEMPERATURE SENSOR VALUE");
     getTemp();
-    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
+    vTaskDelay(100 / portTICK_PERIOD_MS ); //delay of 100ms
   }
 }
 
@@ -96,12 +100,13 @@ void getTemp()
     {
       return;
     }  
-    currentTemp = readedTemp;
+    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+    currentTemperature = readedTemp;
     //Print temperature value to serial monitor
     Serial.print("Temp: ");
     Serial.print(currentTemp);
     Serial.println(" Celsius");
-    
+    xSemaphoreGive(xSemaphore);
 }
 
 
@@ -110,29 +115,37 @@ void TaskHeatControl(void *pvParameters)  // Third Task
   (void) pvParameters;
   for (;;) // A Task shall never return or exit.
   {
-    Serial.println("Check if HEATING is needed");
-    if((currentTemperature < settedTemp) && seasonStatus)  // If current temperature is lower then the temperature setted
+    xSemaphoreTake(xSemaphore, portMAX_DELAY);
+    if(seasonStatus)  // If the thermostat is set on winter mode start the heating
     {
-       startHeating();             // turn on heating
+       xSemaphoreGive(xSemaphore);
+       startHeating();             // turn on the heating
     }
-    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
+    else 
+    {
+      xSemaphoreGive(xSemaphore);
+    }
+    vTaskDelay(100 / portTICK_PERIOD_MS ); //delay of 100ms
   }
 }
 
 void startHeating(){
-  while((currentTemperature < settedTemp) && seasonStatus)
+  xSemaphoreTake(xSemaphore, portMAX_DELAY);
+  if(currentTemperature < settedTemp))
   {
     digitalWrite(RelayPin,HIGH);
     Serial.println("HEATING ON");
-    heatingStatus = true;
-    vTaskDelay(500 / portTICK_PERIOD_MS ); //delay of 500ms
+    isActive = true;
+    xSemaphoreGive(xSemaphore);
   }
-  digitalWrite(RelayPin,LOW);
-  heatingStatus = false;
-  Serial.println("HEATING OFF");
+  else
+  {
+    digitalWrite(RelayPin,LOW);
+    isActive = false;
+    Serial.println("HEATING OFF");
+    xSemaphoreGive(xSemaphore);
+  }
 }
-
-
 /*
   Since SetTemperature is READ_WRITE variable, onSetTemperatureChange() is
   executed every time a new value is received from IoT Cloud.

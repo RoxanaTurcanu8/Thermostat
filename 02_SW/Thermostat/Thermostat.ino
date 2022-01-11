@@ -96,17 +96,18 @@ void getTemp()
 {
    float readedTemp = dht.readTemperature();
     // Check if any reads failed and exit early (to try again):
-    if (isnan(readedTemp)) 
+    if (isnan(readedTemp) == 0)                    //returns 0 if readedTemp is a valid temperature
     {
-      return;
+      xSemaphoreTake(xSemaphore, portMAX_DELAY);
+      currentTemperature = readedTemp;
+      xSemaphoreGive(xSemaphore);  
     }  
-    xSemaphoreTake(xSemaphore, portMAX_DELAY);
-    currentTemperature = readedTemp;
-    //Print temperature value to serial monitor
-    Serial.print("Temp: ");
-    Serial.print(currentTemp);
-    Serial.println(" Celsius");
-    xSemaphoreGive(xSemaphore);
+      xSemaphoreTake(xSemaphore, portMAX_DELAY);
+      //Print temperature value to serial monitor
+      Serial.print("Temp: ");
+      Serial.print(currentTemperature);
+      Serial.println(" Celsius");
+      xSemaphoreGive(xSemaphore);
 }
 
 
@@ -123,6 +124,9 @@ void TaskHeatControl(void *pvParameters)  // Third Task
     }
     else 
     {
+      digitalWrite(RelayPin,LOW);
+      isActive = false;
+      Serial.println("HEATING OFF");
       xSemaphoreGive(xSemaphore);
     }
     vTaskDelay(100 / portTICK_PERIOD_MS ); //delay of 100ms
@@ -131,7 +135,7 @@ void TaskHeatControl(void *pvParameters)  // Third Task
 
 void startHeating(){
   xSemaphoreTake(xSemaphore, portMAX_DELAY);
-  if(currentTemperature < settedTemp))
+  if(currentTemperature < settedTemp)
   {
     digitalWrite(RelayPin,HIGH);
     Serial.println("HEATING ON");
